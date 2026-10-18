@@ -1,0 +1,6 @@
+streamlit>=1.36,<2
+gymnasium>=1.0,<2
+datasets>=3.0,<5
+torch>=2.3,<3
+requests>=2.32,<3
+pytest>=8,<10

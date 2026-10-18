@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "medverify-rl"
+version = "0.1.0"
+description = "Research prototype for evidence-linked medical claim verification with reinforcement learning"
+requires-python = ">=3.11"
+dependencies = ["streamlit>=1.36,<2", "gymnasium>=1.0,<2", "datasets>=3.0,<5", "torch>=2.3,<3", "requests>=2.32,<3"]
+
+[project.optional-dependencies]
+test = ["pytest>=8,<10"]
+
+[tool.setuptools.packages.find]
+include = ["config*", "src*", "medverify_rl*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
