@@ -233,15 +233,35 @@ python scripts/train_hrl.py \
 	--device auto
 ```
 
-The HRL CLI loads only `train` and `validation`, rejects train/validation source-record overlap, and disables target-dependent rewards during validation. Best-checkpoint selection uses target-free mean validation episode return; answer-origin alignment is separately reported after policy rollout. Manager checkpoints and one separate worker checkpoint per option are saved in `models/hrl/<configuration>_<timestamp>/{best,final}/`. Per-episode returns, option choices/durations/termination reasons, primitive action counts, component losses, validation predictions/answer-origin alignment, and split provenance are under `results/hrl/`.
+The HRL CLI loads only `train` and `validation`, rejects train/validation source-record overlap, validates that split metadata is project-generated, and disables target-dependent rewards during validation. Legacy callers retain validation-best checkpoint behavior by default. Manager checkpoints and one separate worker checkpoint per option are saved in unique `models/hrl/<configuration>_<timestamp>/{best_episode_<n>,final}/` directories. Per-episode returns, option choices/durations/termination reasons, primitive action counts, component losses, validation predictions/answer-origin alignment, and split provenance are under `results/hrl/`.
+
+### Reproducible paired evaluation
+
+Both training CLIs accept `--max-environment-steps`. This counts primitive `env.step()` calls and overrides the legacy `--episodes` limit. A new episode starts while budget remains; its environment action cap is reduced to the remaining global budget for the final partial episode, so the count reaches the requested budget without overshooting. The final partial episode is marked `truncated`, not naturally terminated. In HRL, an option interrupted by this global cap records its actual primitive duration and a truncated SMDP transition, so no continuation target is bootstrapped. Budgets smaller than one normal episode are allowed as a single partial episode. Manifests report requested/actual/unused interactions, completed episodes, stopping reason, and completion status.
+
+The primary experiment must explicitly use `--checkpoint-policy fixed_final_at_budget` for both trainers. It evaluates only the final checkpoint after the requested interaction budget is reached; validation metrics remain descriptive and do not select a checkpoint. The shared evaluation protocol is ordered validation scenarios with greedy action selection and the same reset-seed schedule. A bounded final partial episode is allowed to consume the last remaining interactions; the final DQN transition and HRL SMDP option transition are marked truncated. A run that fails to reach the declared budget is marked `incomplete`. The comparison CLI requires both run manifests in this mode and checks agent identity, matching seed/configuration/split provenance/budget/action cap/evaluation protocol/validation count, completed status, selected final path, exact budget completion, and checkpoint hash. The legacy default `--checkpoint-policy legacy_validation_best` remains available for older callers and selects the best target-free validation-return checkpoint; it is not the primary experiment protocol. In either mode, answer-origin alignment and coverage are reported separately from target-free return/cost, with explicit denominators.
+
+The primary 10,000-interaction training invocations are:
+
+```bash
+python scripts/train_dqn.py --configuration pqa_labeled --seed 17 --max-action-budget 8 --max-environment-steps 10000 --checkpoint-policy fixed_final_at_budget
+python scripts/train_hrl.py --configuration pqa_labeled --seed 17 --max-action-budget 8 --max-environment-steps 10000 --checkpoint-policy fixed_final_at_budget
+```
+
+Before selecting a full training interaction budget, measure simulator-only throughput on train data with `python scripts/check_experiment_feasibility.py --configuration pqa_labeled --interactions 256 --seed 17`. The probe loads only the train split, uses seeded random actions, and prints an environment-stepping projection for 10,000 interactions; it excludes policy inference, optimizer updates, validation, and checkpoint I/O, so it is a lower-bound estimate rather than a training runtime guarantee.
+
+Run outputs use unique timestamped run directories and checkpoint subdirectories. A run manifest is written only after its final checkpoint and episode log exist; its status distinguishes completed and incomplete runs. The manifest includes the selected checkpoint path/hash and a source diff hash (excluding `.env*` files) alongside the base commit and dirty-state flag. Comparison JSON output refuses an existing path. Answer-origin alignment is derived from the candidate's MedHallu source-field origin and must not be described as medical accuracy, clinical validation, or evidence correctness. No test split is used for training or checkpoint selection.
 
 Compare the existing flat DQN checkpoint and an HRL checkpoint directory on the same held-out validation scenarios:
 
 ```bash
 python scripts/compare_dqn_hrl.py \
 	--configuration pqa_labeled \
-	--dqn-checkpoint models/dqn/<compatible-dqn-checkpoint>.pt \
-	--hrl-checkpoint-dir models/hrl/<configuration>_<timestamp>/final \
+	--checkpoint-policy fixed_final_at_budget \
+	--dqn-checkpoint models/dqn/<run-id>/final.pt \
+	--hrl-checkpoint-dir models/hrl/<run-id>/final \
+	--dqn-run-manifest results/dqn/<run-id>/run.json \
+	--hrl-run-manifest results/hrl/<run-id>/run.json \
 	--max-action-budget 8 \
 	--seed 17 \
 	--output results/comparisons/dqn_vs_hrl.json
@@ -334,3 +354,16 @@ artifacts/              Reserved for generated artifacts
 logs/                   Reserved for runtime logs
 tests/                  Configuration and schema tests
 ```
+
+## Phase 10 Curated Research Figures
+
+The final 15-figure collection is in `results/graphs/phase10_curated_20261019/`; its `README.md` indexes each figure's research question, saved source artifacts, and interpretation. Existing graph outputs remain in their prior locations. The collection uses only saved run manifests, episode CSVs, and validation comparison reports; it does not load the test split or run training/evaluation.
+
+Install the plotting extra and regenerate into the same new, non-existing destination only after preserving any prior output:
+
+```bash
+python -m pip install -e ".[graphs]"
+python scripts/export_phase10_curated_graphs.py
+```
+
+The exporter validates the common 186-scenario validation order/reset schedule and refuses to overwrite its output directory. The Phase 9I guard figure is an evaluation-time constraint on the existing Candidate A checkpoints, not a retrained policy. Candidate A validation had 100% abstention, zero definitive decisions, and zero insufficient-evidence finalizations. Observable acquisition is a simulator state-change diagnostic, not evidence quality. No figure represents medical accuracy or clinical validity. Only the curated Phase 10 directory is unignored; other `results/` data remain ignored by Git.# An-Evidence-Grounded-RL-Framework-for-Risk-Aware-Hallucination-Detection-in-Medical-LLMs
